@@ -71,7 +71,6 @@ class MyHomePage extends StatelessWidget {
 
     void enviarDatos() async {
       var url = Uri.parse('http://192.168.1.46:80/guardar_disp');
-      var rt = 0;
       try {
         print("Puta estamos en el try envio datos");
         
@@ -94,7 +93,6 @@ class MyHomePage extends StatelessWidget {
 
         print(response.body);
       } catch (e) {
-        rt = 1;
         print('Request failed: $e'); // Si hay un error en la red, lo mostramos
       }
     }

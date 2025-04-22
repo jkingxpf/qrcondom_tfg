@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:front_tfg/pantalla_rfb.dart';
 import 'package:http/http.dart' as http;
+import 'package:android_id/android_id.dart';
 
 class AnalisisQr extends StatefulWidget {
   final String analisis;
@@ -44,7 +45,10 @@ class _AnalisisQrState extends State<AnalisisQr> {
     print("Entrando babyyyyy");
     var url = Uri.parse('http://192.168.1.46:80/consulta_segura');
 
-    var body = json.encode({'code_qr': widget.qr});
+    final androidIdPlugin = AndroidId();
+    final androidId = await androidIdPlugin.getId();
+
+    var body = json.encode({'android_id': androidId});
     try {
       var response = await http.post(
         url,
@@ -56,9 +60,7 @@ class _AnalisisQrState extends State<AnalisisQr> {
         setState(() {
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => PantallaRfb(),
-            ),
+            MaterialPageRoute(builder: (context) => PantallaRfb()),
           );
         });
       } else {

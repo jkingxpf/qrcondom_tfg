@@ -42,6 +42,43 @@ type analizadoresURL struct {
 	IP_QUALITY_SCORE     bool
 }
 
+type Dispositivo struct {
+	AndroidID            string   `json:"android_id"`
+	VersionSecurityPatch string   `json:"version_security_patch"`
+	VersionSdkInt        int      `json:"version_sdk_int"`
+	VersionRelease       string   `json:"version_release"`
+	VersionPreviewSdkInt int      `json:"version_preview_sdk_int"`
+	VersionIncremental   string   `json:"version_incremental"`
+	VersionCodename      string   `json:"version_codename"`
+	VersionBaseOS        string   `json:"version_base_os"`
+	Board                string   `json:"board"`
+	Bootloader           string   `json:"bootloader"`
+	Brand                string   `json:"brand"`
+	Device               string   `json:"device"`
+	Display              string   `json:"display"`
+	Fingerprint          string   `json:"fingerprint"`
+	Hardware             string   `json:"hardware"`
+	Host                 string   `json:"host"`
+	ID                   string   `json:"id"`
+	Manufacturer         string   `json:"manufacturer"`
+	Model                string   `json:"model"`
+	Product              string   `json:"product"`
+	Supported32BitAbis   []string `json:"supported_32_bit_abis"`
+	Supported64BitAbis   []string `json:"supported_64_bit_abis"`
+	Type                 string   `json:"type"`
+	IsPhysicalDevice     bool     `json:"is_physical_device"`
+	SystemFeatures       []string `json:"system_features"`
+	SerialNumber         string   `json:"serial_number"`
+	IsLowRamDevice       bool     `json:"is_low_ram_device"`
+}
+
+type Localizacion struct {
+	ID          int     `json:"id"`
+	Latitud     float64 `json:"latitud"`
+	Longitud    float64 `json:"longitud"`
+	Descripcion string  `json:"descripcion"`
+}
+
 const (
 	imagenBase = "android_base.qcow2"
 	prefijo    = "clone_"
@@ -334,7 +371,7 @@ func crearBBDD() {
 	_, err := db.Exec(query)
 
 	if err != nil {
-		log.Fatal("Error al crear la tabla:", err)
+		log.Fatal("Error al crear la tabla qrs:", err)
 	}
 
 	query = `CREATE TABLE IF NOT EXISTS dispositivo (
@@ -370,7 +407,7 @@ func crearBBDD() {
 	_, err = db.Exec(query)
 
 	if err != nil {
-		log.Fatal("Error al crear la tabla:", err)
+		log.Fatal("Error al crear la tabla dispositivo:", err)
 	}
 
 	query = `CREATE TABLE IF NOT EXISTS localizacion (
@@ -384,7 +421,7 @@ func crearBBDD() {
 	_, err = db.Exec(query)
 
 	if err != nil {
-		log.Fatal("Error al crear la tabla:", err)
+		log.Fatal("Error al crear la tabla localizacion:", err)
 	}
 
 	query = `CREATE TABLE IF NOT EXISTS dispositivo_qr (
@@ -396,7 +433,7 @@ func crearBBDD() {
 	_, err = db.Exec(query)
 
 	if err != nil {
-		log.Fatal("Error al crear la tabla:", err)
+		log.Fatal("Error al crear la tabla dispositivo_qr:", err)
 	}
 
 	query = `CREATE TABLE IF NOT EXISTS qr_localizacion (
@@ -408,10 +445,10 @@ func crearBBDD() {
 	_, err = db.Exec(query)
 
 	if err != nil {
-		log.Fatal("Error al crear la tabla:", err)
+		log.Fatal("Error al crear la tabla qr_localizacion:", err)
 	}
 
-	query = `CREATE TABLE IF NOT EXISTS ip_disp (
+	/*query = `CREATE TABLE IF NOT EXISTS ip_disp (
 		id
 	);`
 
@@ -419,7 +456,7 @@ func crearBBDD() {
 
 	if err != nil {
 		log.Fatal("Error al crear la tabla:", err)
-	}
+	}*/
 
 	fmt.Println("Tabla creada exitosamente")
 }
@@ -478,14 +515,23 @@ func guardar_disp(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Metodo http no valido", http.StatusMethodNotAllowed)
 	} else {
 
-		var datos map[string]interface{}
+		var datos Dispositivo
 		decode := json.NewDecoder(r.Body)
 		err := decode.Decode(&datos)
 
+		//Empezamos transaccion
+
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Error al procesar el JSON: %s", err), http.StatusBadRequest)
+			log.Fatal(err)
+
 		} else {
 			//fmt.Println(datos)
+
+			if err != nil {
+				http.Error(w, "Error al procesar la información", http.StatusInternalServerError)
+				log.Fatal(err)
+			}
 
 			query := `
 			INSERT INTO dispositivo (
@@ -520,68 +566,105 @@ func guardar_disp(w http.ResponseWriter, r *http.Request) {
 			);
 			`
 
-			_, err = db.Exec(query,
-				datos["androidId"],
-				datos["version.securityPatch"],
-				int(datos["version.sdkInt"].(float64)),
-				datos["version.release"],
-				int(datos["version.previewSdkInt"].(float64)),
-				datos["version.incremental"],
-				datos["version.codename"],
-				datos["version.baseOS"],
-				datos["board"],
-				datos["bootloader"],
-				datos["brand"],
-				datos["device"],
-				datos["display"],
-				datos["fingerprint"],
-				datos["hardware"],
-				datos["host"],
-				datos["id"],
-				datos["manufacturer"],
-				datos["model"],
-				datos["product"],
-				datos["type"],
-				datos["isPhysicalDevice"],
-				datos["serialNumber"],
-				datos["isLowRamDevice"],
+			// Asegúrate de que tienes la estructura "Dispositivo" y los datos decodificados en la variable "datos"
+			_, err := db.Exec(
+				query,
+				datos.AndroidID,
+				datos.VersionSecurityPatch,
+				datos.VersionSdkInt,
+				datos.VersionRelease,
+				datos.VersionPreviewSdkInt,
+				datos.VersionIncremental,
+				datos.VersionCodename,
+				datos.VersionBaseOS,
+				datos.Board,
+				datos.Bootloader,
+				datos.Brand,
+				datos.Device,
+				datos.Display,
+				datos.Fingerprint,
+				datos.Hardware,
+				datos.Host,
+				datos.ID,
+				datos.Manufacturer,
+				datos.Model,
+				datos.Product,
+				datos.Type,
+				datos.IsPhysicalDevice,
+				datos.SerialNumber,
+				datos.IsLowRamDevice,
 			)
+
+			if err != nil {
+				fmt.Errorf("Error al insertar datos del dispositivo: %v", err)
+				// Aquí puedes hacer rollback si estás en una transacción
+				return
+			}
 
 			if err != nil {
 				fmt.Errorf("error al insertar datos: %v", err)
 			}
-			
+
 			rows, err := db.Query("SELECT android_id FROM dispositivo")
-			
+
 			if err != nil {
 				log.Fatalf("Error al hacer el SELECT: %v", err)
 			}
 			defer rows.Close()
-			
+
 			for rows.Next() {
 				var androidID string
-						
+
 				// IMPORTANTE: El orden debe coincidir con las columnas en la tabla (sin los TEXT[])
 				err := rows.Scan(
 					&androidID,
 				)
-			
+
 				if err != nil {
 					log.Printf("Error al escanear fila: %v", err)
 					continue
 				}
-			
+
 				fmt.Printf("Dispositivo: %s \n", androidID)
-			}			
+			}
 
 		}
 	}
 }
 
-func guardar_qr(qr Code_QR){
+func guardar_qr(qr Code_QR, android_id string, localizacion Localizacion) {
 
-	qry := "INSERT INTO qr (qr)"
+	tx, err := db.Begin()
 
+	if err != nil {
+		fmt.Errorf("Error al insertar el QR: %v", err)
+		log.Fatal(err)
+	}
+
+	insert_qr := `INSERT INTO qrs (contenido) VALUES ($1) RETURNING id;`
+
+	var qrID int
+	err = tx.QueryRow(insert_qr, qr.CODE_QR).Scan(&qrID)
+	if err != nil {
+		fmt.Errorf("Error al insertar el QR: %v", err)
+		tx.Rollback()
+	}
+
+	relacion_qr_disp := `INSERT INTO dispositivo_qr (qr_id, android_id) VALUES ($1, $2);`
+	_, err = tx.Exec(relacion_qr_disp, qrID, android_id)
+
+	if err != nil {
+		fmt.Errorf("Error al crear la relación entre el QR y el dispositivo: %v", err)
+		tx.Rollback()
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		fmt.Errorf("Error al hacer commit de la transacción: %v", err)
+		tx.Rollback()
+	}
+
+	fmt.Println("QR insertado y relacionado con el dispositivo correctamente.")
 }
 
 //Analisis del QR.
@@ -594,9 +677,18 @@ func analisisQR(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Metodo http no valido", http.StatusMethodNotAllowed)
 	} else {
-		var cd_qr Code_QR
+		var datos map[string]string
+
 		decode := json.NewDecoder(r.Body)
-		err := decode.Decode(&cd_qr)
+		err := decode.Decode(&datos)
+
+		var cd_qr Code_QR
+		cd_qr.CODE_QR = datos["code_qr"]
+
+		androidID := datos["android_id"]
+
+		fmt.Println(androidID)
+		fmt.Println(cd_qr.CODE_QR)
 
 		if err != nil {
 			http.Error(w, "Error al procesar el JSON", http.StatusBadRequest)
@@ -616,7 +708,7 @@ func analisisQR(w http.ResponseWriter, r *http.Request) {
 
 				if resultado {
 					resultStrign = "Peligroso"
-					guardar_qr(cd_qr)
+					guardar_qr(cd_qr,androidID,Localizacion{})
 				} else {
 					resultStrign = "No peligroso"
 				}
