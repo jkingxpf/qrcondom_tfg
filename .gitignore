@@ -1,0 +1,5 @@
+#Ignorar los .env
+*.env
+
+#ignorar los docker-compose
+docker-compose.yml
