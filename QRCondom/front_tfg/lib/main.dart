@@ -123,12 +123,7 @@ class MyHomePage extends StatelessWidget {
             ),
             ElevatedButton(
               onPressed:
-                  () => {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => PantallaRfb()),
-                    ),
-                  },
+                  () => {},
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color.fromARGB(255, 0, 150, 136),
                 foregroundColor: Colors.white, // Texto blanco para contraste

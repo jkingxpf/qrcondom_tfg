@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"strconv"
+	"sync"
 
 	//"flag"
 	"fmt"
@@ -79,20 +80,32 @@ type Localizacion struct {
 	Descripcion string  `json:"descripcion"`
 }
 
+type DatosAsociadosAndroid struct {
+	cloneID uint64
+	puerto  uint32
+}
+
 const (
 	imagenBase = "android_base.qcow2"
 	prefijo    = "clone_"
 	qemuBinary = "qemu-system-x86_64"
 )
 
-var bloqueMontaje uint64 = 0
-var cloneID uint64
 var path string
 var db *sql.DB
+var androidDicc map[string]DatosAsociadosAndroid = make(map[string]DatosAsociadosAndroid)
+var bloqueMontaje uint64 = 0
+var cloneID uint64 = 0
+var puerto uint32 = 0
+var mutex sync.Mutex
 
 // Clonado de la bbdd
 func getNewIdClone() uint64 {
 	return atomic.AddUint64(&cloneID, 1)
+}
+
+func getNewPuerto() uint32 {
+	return atomic.AddUint32(&puerto, 1)
 }
 
 func newBloqueMontaje() uint64 {
@@ -109,8 +122,8 @@ func newBloqueMontaje() uint64 {
 	return bloqueMontaje
 }
 
-func crearClone() (string, error) {
-	cloneID = getNewIdClone()
+func crearClone(android_id string) (string, error) {
+	cloneID = androidDicc[android_id].cloneID
 	imagenClone := fmt.Sprintf(prefijo+"%d.qcow2", cloneID)
 	cmd := exec.Command("qemu-img", "create", "-f", "qcow2", "-b", imagenBase, "-F", "qcow2", imagenClone)
 	cmd.Dir = path
@@ -264,11 +277,25 @@ func consultaSegura(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("Putamadre llego postPost")
 
-	fmt.Fprintln(w, "Putamadre llego")
-
 	var qrcode Code_QR
+
+	var dic map[string]string
 	decode := json.NewDecoder(r.Body)
-	err := decode.Decode(&qrcode)
+	err := decode.Decode(&dic)
+
+	fmt.Println("Ca esta pasando")
+
+	qrcode.CODE_QR = dic["qr_code"]
+	var datosAsos DatosAsociadosAndroid
+
+	fmt.Println("Pre lock")
+
+	datosAsos.cloneID = getNewIdClone()
+	datosAsos.puerto = getNewPuerto()
+
+	fmt.Println("Pre lock")
+
+	androidDicc[dic["android_id"]] = datosAsos
 
 	if err != nil {
 		http.Error(w, "Error al procesar el JSON", http.StatusBadRequest)
@@ -278,7 +305,7 @@ func consultaSegura(w http.ResponseWriter, r *http.Request) {
 
 	path = os.Getenv("CLONE_PATH")
 
-	cloneName, err := crearClone()
+	cloneName, err := crearClone(dic["android_id"])
 	fmt.Printf("Nombre de clone puta madre: %s \n", cloneName)
 
 	if err != nil {
@@ -289,12 +316,18 @@ func consultaSegura(w http.ResponseWriter, r *http.Request) {
 	compartirQr(qrcode.CODE_QR, cloneName)
 
 	/*vmCmd*/
-	_, err = startVM(cloneName, ":1")
+	port := fmt.Sprintf(":%d",
+		androidDicc[dic["android_id"]].puerto)
+
+	_, err = startVM(cloneName, port)
 
 	if err != nil {
 		fmt.Errorf("Error al iniciar VM main: %v", err)
 	}
 
+	w.WriteHeader(http.StatusCreated)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(androidDicc[dic["android_id"]].puerto)
 	/*fmt.Println("VM running. Press ENTER to stop...")
 	fmt.Scanln()
 
@@ -708,7 +741,7 @@ func analisisQR(w http.ResponseWriter, r *http.Request) {
 
 				if resultado {
 					resultStrign = "Peligroso"
-					guardar_qr(cd_qr,androidID,Localizacion{})
+					guardar_qr(cd_qr, androidID, Localizacion{})
 				} else {
 					resultStrign = "No peligroso"
 				}

@@ -48,7 +48,11 @@ class _AnalisisQrState extends State<AnalisisQr> {
     final androidIdPlugin = AndroidId();
     final androidId = await androidIdPlugin.getId();
 
-    var body = json.encode({'android_id': androidId});
+    var body = json.encode({
+      'android_id': androidId,
+      'qr_code': widget.qr,
+    });
+
     try {
       var response = await http.post(
         url,
@@ -56,11 +60,14 @@ class _AnalisisQrState extends State<AnalisisQr> {
         body: body,
       );
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 201) {
+        int puerto = json.decode(response.body);
+
         setState(() {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => PantallaRfb()),
+            MaterialPageRoute(builder: (context) => PantallaRfb(port: puerto)
+            ),
           );
         });
       } else {
@@ -80,6 +87,34 @@ class _AnalisisQrState extends State<AnalisisQr> {
               ? const Center(child: Text("No hay datos"))
               : Column(
                 children: [
+                  Card(
+                    margin: const EdgeInsets.all(16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 4,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'Contenido del QR:',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            widget.qr,
+                            style: const TextStyle(fontSize: 16),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                   Expanded(
                     child: ListView.builder(
                       itemCount: analizadores.length,

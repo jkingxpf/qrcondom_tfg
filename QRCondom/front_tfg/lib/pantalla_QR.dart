@@ -23,7 +23,6 @@ class _Escaneo_QR_State extends State<Escaneo_QR> {
 
   void analisis_qr(analizador, qr) {
 
-
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => AnalisisQr(analisis: analizador, qr: qr)),

@@ -2,7 +2,9 @@ import 'package:flutter_rfb/flutter_rfb.dart';
 import 'package:flutter/material.dart';
 
 class PantallaRfb extends StatelessWidget {
-  const PantallaRfb({super.key});
+  final int port;
+
+  const PantallaRfb({super.key,required this.port});
 
   @override
   Widget build(BuildContext context) {
@@ -14,10 +16,10 @@ class PantallaRfb extends StatelessWidget {
             children: [
               InteractiveViewer(
                 constrained: true,
-                //maxScale: 10,
+                maxScale: 10,
                 child: RemoteFrameBufferWidget(
                   hostName: '192.168.1.46',
-                  port: 5901,
+                  port: 5900 + port,
                   onError: (Object error) {
                     print('Error de conexión: $error');
                   },
