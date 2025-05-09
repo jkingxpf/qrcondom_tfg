@@ -23,7 +23,6 @@ import (
 
 	//"syscall"
 	"github.com/williballenthin/govt"
-
 	//se usa despues
 	"github.com/joho/godotenv"
 
@@ -44,14 +43,14 @@ type analizadoresURL struct {
 }
 
 type Dispositivo struct {
-	AndroidID            string   `json:"android_id"`
-	VersionSecurityPatch string   `json:"version_security_patch"`
-	VersionSdkInt        int      `json:"version_sdk_int"`
-	VersionRelease       string   `json:"version_release"`
-	VersionPreviewSdkInt int      `json:"version_preview_sdk_int"`
-	VersionIncremental   string   `json:"version_incremental"`
-	VersionCodename      string   `json:"version_codename"`
-	VersionBaseOS        string   `json:"version_base_os"`
+	AndroidID            string   `json:"androidId"`
+	VersionSecurityPatch string   `json:"version.securityPatch"`
+	VersionSdkInt        int      `json:"version.sdkInt"`
+	VersionRelease       string   `json:"version.release"`
+	VersionPreviewSdkInt int      `json:"version.previewSdkInt"`
+	VersionIncremental   string   `json:"version.incremental"`
+	VersionCodename      string   `json:"version.codename"`
+	VersionBaseOS        string   `json:"version.baseOS"`
 	Board                string   `json:"board"`
 	Bootloader           string   `json:"bootloader"`
 	Brand                string   `json:"brand"`
@@ -64,25 +63,25 @@ type Dispositivo struct {
 	Manufacturer         string   `json:"manufacturer"`
 	Model                string   `json:"model"`
 	Product              string   `json:"product"`
-	Supported32BitAbis   []string `json:"supported_32_bit_abis"`
-	Supported64BitAbis   []string `json:"supported_64_bit_abis"`
+	Supported32BitAbis   []string `json:"supported32BitAbis"`
+	Supported64BitAbis   []string `json:"supported64BitAbis"`
 	Type                 string   `json:"type"`
-	IsPhysicalDevice     bool     `json:"is_physical_device"`
-	SystemFeatures       []string `json:"system_features"`
-	SerialNumber         string   `json:"serial_number"`
-	IsLowRamDevice       bool     `json:"is_low_ram_device"`
+	IsPhysicalDevice     bool     `json:"isPhysicalDevice"`
+	SystemFeatures       []string `json:"systemFeatures"`
+	SerialNumber         string   `json:"serialNumber"`
+	IsLowRamDevice       bool     `json:"isLowRamDevice"`
 }
 
 type Localizacion struct {
 	ID          int     `json:"id"`
 	Latitud     float64 `json:"latitud"`
 	Longitud    float64 `json:"longitud"`
-	Descripcion string  `json:"descripcion"`
 }
 
 type DatosAsociadosAndroid struct {
 	cloneID uint64
 	puerto  uint32
+	vmCmd   *exec.Cmd
 }
 
 const (
@@ -293,9 +292,9 @@ func consultaSegura(w http.ResponseWriter, r *http.Request) {
 	datosAsos.cloneID = getNewIdClone()
 	datosAsos.puerto = getNewPuerto()
 
-	fmt.Println("Pre lock")
-
 	androidDicc[dic["android_id"]] = datosAsos
+
+	fmt.Println("Pre lock")
 
 	if err != nil {
 		http.Error(w, "Error al procesar el JSON", http.StatusBadRequest)
@@ -319,11 +318,14 @@ func consultaSegura(w http.ResponseWriter, r *http.Request) {
 	port := fmt.Sprintf(":%d",
 		androidDicc[dic["android_id"]].puerto)
 
-	_, err = startVM(cloneName, port)
+	datosAsos.vmCmd, err = startVM(cloneName, port)
+
+	androidDicc[dic["android_id"]] = datosAsos
 
 	if err != nil {
 		fmt.Errorf("Error al iniciar VM main: %v", err)
 	}
+	fmt.Println(androidDicc[dic["android_id"]])
 
 	w.WriteHeader(http.StatusCreated)
 	w.Header().Set("Content-Type", "application/json")
@@ -345,13 +347,40 @@ func consultaSegura(w http.ResponseWriter, r *http.Request) {
 }
 
 func finConsultaSegura(w http.ResponseWriter, r *http.Request) {
-	/*
-		decode := json.NewDecoder(r.Body)
-		err := decode.Decode(&qrcode)
 
-		if err != nil {
-			http.Error(w, "Error al procesar el JSON", http.StatusBadRequest)
-		}*/
+	var respuesta map[string]string
+	decode := json.NewDecoder(r.Body)
+	err := decode.Decode(&respuesta)
+
+	if err != nil {
+		http.Error(w, "Error al procesar el JSON", http.StatusBadRequest)
+	}
+
+	infoAsoc := androidDicc[respuesta["android_id"]]
+
+	if infoAsoc.vmCmd == nil {
+		log.Fatal("Que coño por que es null?")
+	}
+
+	if err := infoAsoc.vmCmd.Process.Kill(); err != nil {
+		fmt.Println("Error stopping VM:", err)
+	}
+
+	fmt.Println("PostEliminacion")
+
+	imagenClone := fmt.Sprintf(prefijo+"%d.qcow2", infoAsoc.cloneID)
+
+	if err := deleteClone(imagenClone); err != nil {
+		fmt.Println("Error deleting clone:", err)
+	} else {
+
+		fmt.Println("Clone deleted.")
+	}
+
+	delete(androidDicc, respuesta["android_id"])
+
+	fmt.Println("Eliminacion completada X_X")
+
 }
 
 // Apartado de analisis de QR por via externa.
@@ -548,9 +577,15 @@ func guardar_disp(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Metodo http no valido", http.StatusMethodNotAllowed)
 	} else {
 
-		var datos Dispositivo
+		var datosJson map[string]interface{}
 		decode := json.NewDecoder(r.Body)
-		err := decode.Decode(&datos)
+		//err := 
+		decode.Decode(&datosJson)
+
+
+		fmt.Println(datosJson)
+
+		/*
 
 		//Empezamos transaccion
 
@@ -559,109 +594,84 @@ func guardar_disp(w http.ResponseWriter, r *http.Request) {
 			log.Fatal(err)
 
 		} else {
-			//fmt.Println(datos)
-
-			if err != nil {
-				http.Error(w, "Error al procesar la información", http.StatusInternalServerError)
-				log.Fatal(err)
-			}
-
-			query := `
-			INSERT INTO dispositivo (
-			android_id,
-			version_security_patch,
-			version_sdk_int,
-			version_release,
-			version_preview_sdk_int,
-			version_incremental,
-			version_codename,
-			version_base_os,
-			board,
-			bootloader,
-			brand,
-			device,
-			display,
-			fingerprint,
-			hardware,
-			host,
-			id,
-			manufacturer,
-			model,
-			product,
-			type,
-			is_physical_device,
-			serial_number,
-			is_low_ram_device
-			) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-			$11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-			$21, $22, $23, $24
-			);
-			`
-
-			// Asegúrate de que tienes la estructura "Dispositivo" y los datos decodificados en la variable "datos"
-			_, err := db.Exec(
-				query,
-				datos.AndroidID,
-				datos.VersionSecurityPatch,
-				datos.VersionSdkInt,
-				datos.VersionRelease,
-				datos.VersionPreviewSdkInt,
-				datos.VersionIncremental,
-				datos.VersionCodename,
-				datos.VersionBaseOS,
-				datos.Board,
-				datos.Bootloader,
-				datos.Brand,
-				datos.Device,
-				datos.Display,
-				datos.Fingerprint,
-				datos.Hardware,
-				datos.Host,
-				datos.ID,
-				datos.Manufacturer,
-				datos.Model,
-				datos.Product,
-				datos.Type,
-				datos.IsPhysicalDevice,
-				datos.SerialNumber,
-				datos.IsLowRamDevice,
-			)
-
-			if err != nil {
-				fmt.Errorf("Error al insertar datos del dispositivo: %v", err)
-				// Aquí puedes hacer rollback si estás en una transacción
-				return
-			}
-
-			if err != nil {
-				fmt.Errorf("error al insertar datos: %v", err)
-			}
 
 			rows, err := db.Query("SELECT android_id FROM dispositivo")
-
 			if err != nil {
 				log.Fatalf("Error al hacer el SELECT: %v", err)
 			}
 			defer rows.Close()
 
-			for rows.Next() {
-				var androidID string
+			if !rows.Next() {
+				query := `
+				INSERT INTO dispositivo (
+				android_id,
+				version_security_patch,
+				version_sdk_int,
+				version_release,
+				version_preview_sdk_int,
+				version_incremental,
+				version_codename,
+				version_base_os,
+				board,
+				bootloader,
+				brand,
+				device,
+				display,
+				fingerprint,
+				hardware,
+				host,
+				id,
+				manufacturer,
+				model,
+				product,
+				type,
+				is_physical_device,
+				serial_number,
+				is_low_ram_device
+				) VALUES (
+				$1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+				$11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+				$21, $22, $23, $24
+				);
+				`
 
-				// IMPORTANTE: El orden debe coincidir con las columnas en la tabla (sin los TEXT[])
-				err := rows.Scan(
-					&androidID,
+				// Asegúrate de que tienes la estructura "Dispositivo" y los datos decodificados en la variable "datos"
+				_, err = db.Exec(
+					query,
+					datos.AndroidID,
+					datos.VersionSecurityPatch,
+					datos.VersionSdkInt,
+					datos.VersionRelease,
+					datos.VersionPreviewSdkInt,
+					datos.VersionIncremental,
+					datos.VersionCodename,
+					datos.VersionBaseOS,
+					datos.Board,
+					datos.Bootloader,
+					datos.Brand,
+					datos.Device,
+					datos.Display,
+					datos.Fingerprint,
+					datos.Hardware,
+					datos.Host,
+					datos.ID,
+					datos.Manufacturer,
+					datos.Model,
+					datos.Product,
+					datos.Type,
+					datos.IsPhysicalDevice,
+					datos.SerialNumber,
+					datos.IsLowRamDevice,
 				)
 
 				if err != nil {
-					log.Printf("Error al escanear fila: %v", err)
-					continue
+					fmt.Errorf("Error al insertar datos del dispositivo: %v", err)
+					// Aquí puedes hacer rollback si estás en una transacción
+					return
 				}
 
-				fmt.Printf("Dispositivo: %s \n", androidID)
 			}
-
-		}
+		}*/
 	}
 }
 
@@ -803,41 +813,3 @@ func main() {
 	}
 
 }
-
-/*
-func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error cargando .env")
-	}
-
-	path = os.Getenv("CLONE_PATH")
-
-	cloneImage, err := crearClone()
-	if err != nil {
-		fmt.Println("Error creating clone:", err)
-		return
-	}
-
-	fmt.Println("Clone created:", cloneImage)
-	vmCmd, err := startVM(cloneImage, ":1")
-	if err != nil {
-		fmt.Println("Error starting VM:", err)
-		return
-	}
-
-	fmt.Println("VM running. Press ENTER to stop...")
-	fmt.Scanln()
-
-	if err := vmCmd.Process.Kill(); err != nil {
-		fmt.Println("Error stopping VM:", err)
-	}
-
-	time.Sleep(2 * time.Second)
-	if err := deleteClone(cloneImage); err != nil {
-		fmt.Println("Error deleting clone:", err)
-	} else {
-		fmt.Println("Clone deleted.")
-	}
-}
-*/

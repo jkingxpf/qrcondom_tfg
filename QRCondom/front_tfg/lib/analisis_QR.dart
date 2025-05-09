@@ -63,6 +63,8 @@ class _AnalisisQrState extends State<AnalisisQr> {
       if (response.statusCode == 201) {
         int puerto = json.decode(response.body);
 
+        print(puerto);
+        
         setState(() {
           Navigator.push(
             context,
