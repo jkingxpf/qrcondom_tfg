@@ -1,43 +1,14 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:front_tfg/pantalla_QR.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:android_id/android_id.dart';
+import 'package:front_tfg/pantalla_QR.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 
 void main() {
   runApp(const MyApp());
-} 
-
-Future<Position?> sacarPosicion() async {
-  Position? posicion;
-  bool servicioHabilitado;
-  LocationPermission permiso;
-
-  servicioHabilitado = await Geolocator.isLocationServiceEnabled();
-
-  print(servicioHabilitado ? "habilitado" : "no habilitado");
-  if (servicioHabilitado) {
-    permiso = await Geolocator.checkPermission();
-    if (permiso == LocationPermission.denied) {
-      print("pedimos permisos");
-      permiso = await Geolocator.requestPermission();
-      if (permiso == LocationPermission.denied) {
-      } else {
-        posicion = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
-        );
-      }
-    } else {
-      posicion = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-    }
-  }
-
-  return posicion;
 }
 
 Future<String> infoDispJson() async {
@@ -45,8 +16,6 @@ Future<String> infoDispJson() async {
   final androidInfo = await infoDispositivo.androidInfo;
   final androidIdPlugin = AndroidId();
   final androidId = await androidIdPlugin.getId();
-
-  final Position? posicion = await sacarPosicion();
 
   final datosFiltrados = {
     'Dispositivo': {
@@ -78,11 +47,9 @@ Future<String> infoDispJson() async {
       'serialNumber': androidInfo.serialNumber,
       'isLowRamDevice': androidInfo.isLowRamDevice,
     },
-    'Localizacion':
-        (posicion == null)
-            ? ''
-            : {'altitude': posicion.altitude, 'longitude': posicion.longitude},
   };
+
+  print(datosFiltrados);
 
   return jsonEncode(datosFiltrados);
 }
@@ -159,7 +126,7 @@ class BotonBajoCentro extends StatelessWidget {
 
         final bodyJson = await infoDispJson();
 
-        print(bodyJson);
+        //        print(bodyJson);
 
         var response = await http.post(
           url,
@@ -168,13 +135,13 @@ class BotonBajoCentro extends StatelessWidget {
         );
 
         if (response.statusCode == 200) {
-          /*Navigator.push(
+          Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => Escaneo_QR()),
-          );*/
+          );
         }
 
-        print(response.body);
+        //print(response.body);
       } catch (e) {
         print('Request failed: $e'); // Si hay un error en la red, lo mostramos
       }

@@ -3,11 +3,45 @@ import 'package:front_tfg/analisis_QR.dart';
 import 'package:qr_code_scanner_plus/qr_code_scanner_plus.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:geolocator/geolocator.dart';
+import 'package:android_id/android_id.dart';
 
 class Escaneo_QR extends StatefulWidget {
   @override
   const Escaneo_QR({super.key});
   _Escaneo_QR_State createState() => _Escaneo_QR_State();
+}
+
+Future<Position?> sacarPosicion() async {
+  Position? posicion;
+  bool servicioHabilitado;
+  LocationPermission permiso;
+
+  servicioHabilitado = await Geolocator.isLocationServiceEnabled();
+
+  print(servicioHabilitado ? "habilitado" : "no habilitado");
+
+  !servicioHabilitado ? await Geolocator.openLocationSettings() : null;
+
+  if (servicioHabilitado) {
+    permiso = await Geolocator.checkPermission();
+    if (permiso == LocationPermission.denied) {
+      print("pedimos permisos");
+      permiso = await Geolocator.requestPermission();
+      if (permiso == LocationPermission.denied) {
+      } else {
+        posicion = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+        );
+      }
+    } else {
+      posicion = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+    }
+  }
+
+  return posicion;
 }
 
 class _Escaneo_QR_State extends State<Escaneo_QR> {
@@ -22,10 +56,11 @@ class _Escaneo_QR_State extends State<Escaneo_QR> {
   }
 
   void analisis_qr(analizador, qr) {
-
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => AnalisisQr(analisis: analizador, qr: qr)),
+      MaterialPageRoute(
+        builder: (context) => AnalisisQr(analisis: analizador, qr: qr),
+      ),
     );
   }
 
@@ -59,13 +94,26 @@ class _Escaneo_QR_State extends State<Escaneo_QR> {
     this.controller = controller;
 
     controller.scannedDataStream.listen((scanData) async {
-      var url = Uri.parse('http://192.168.1.46:80/analisis_qr');
-
-      var body = json.encode({'code_qr': scanData.code});
       controller.pauseCamera();
 
-      try {
+      var url = Uri.parse('http://192.168.1.46:80/analisis_qr');
+      final Position? posicion = await sacarPosicion();
+      final androidIdPlugin = AndroidId();
+      final androidId = await androidIdPlugin.getId();
 
+      var body = json.encode({
+        'code_qr': scanData.code,
+        'Localizacion':
+            (posicion == null)
+                ? ''
+                : {
+                  'latitude': posicion.latitude,
+                  'longitude': posicion.longitude,
+                },
+        'androidId': androidId,
+      });
+
+      try {
         print("Puta estamos en el try");
         var response = await http.post(
           url,
@@ -75,13 +123,11 @@ class _Escaneo_QR_State extends State<Escaneo_QR> {
 
         print("Se lanzo el post");
 
-        if (response.statusCode == 201) 
-        {
+        if (response.statusCode == 201) {
           setState(() {
-            analisis_qr(response.body,scanData.code);
+            analisis_qr(response.body, scanData.code);
           });
-        } 
-        else {
+        } else {
           print('Error wacho: ${response.statusCode}');
           controller.resumeCamera();
         }

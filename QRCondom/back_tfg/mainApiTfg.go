@@ -73,9 +73,8 @@ type Dispositivo struct {
 }
 
 type Localizacion struct {
-	ID          int     `json:"id"`
-	Latitud     float64 `json:"latitud"`
-	Longitud    float64 `json:"longitud"`
+	Latitud  float64 `json:"latitude"`
+	Longitud float64 `json:"longitude"`
 }
 
 type DatosAsociadosAndroid struct {
@@ -423,6 +422,35 @@ func analisisVirusTotal(url string) bool {
 }
 
 // Parte de consulta a base de datos propia.
+
+func conexionBBDD() {
+
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error cargando .env")
+	}
+
+	user := os.Getenv("DB_USER")
+	password := os.Getenv("DB_PASSWORD")
+	dbname := os.Getenv("DB_NAME")
+	host := os.Getenv("DB_HOST")
+	port := os.Getenv("DB_PORT")
+
+	db, err = sql.Open("postgres",
+		fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", host, port, user, password, dbname))
+
+	if err != nil {
+		log.Fatal(err)
+		defer db.Close()
+	}
+
+	err = db.Ping()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+}
+
 func crearBBDD() {
 
 	query := `CREATE TABLE IF NOT EXISTS qrs (
@@ -525,49 +553,13 @@ func crearBBDD() {
 
 func consultaBBDD(qr Code_QR) bool {
 
-	user := os.Getenv("DB_USER")
-	password := os.Getenv("DB_PASSWORD")
-	dbname := os.Getenv("DB_NAME")
-	host := os.Getenv("DB_HOST")
-	port := os.Getenv("DB_PORT")
-
-	db, err := sql.Open("postgres",
-		fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", host, port, user, password, dbname))
-
-	if err != nil {
-		log.Fatal(err)
-		defer db.Close()
-	}
-
-	err = db.Ping()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	//sql.Open("postgres",
-	// "postgres://admin_tfg:admin_tfg@localhost:5432/db_tfg?sslmode=disable")
-	fmt.Println("Successfully connected to PostgreSQL!")
-
 	rows, err := db.Query("Select * from qrs where contenido = $1", qr.CODE_QR)
 
 	if err != nil {
 		log.Print("Error en la query: %s", err)
 	}
+	rt := rows.Next()
 	rows.Close()
-
-	var rt bool = false
-
-	if rows.Next() {
-		rt = true
-	}
-
-	//esto va despues del analizador.
-	/*if (rt) {
-		_ , err := db.Exec("INSERT INTO qrs (contenido) VALUES (%s)", qr.CODE_QR)
-		if err != nil {
-			log.Print("Error al insertar el valor: %s", err)
-		}
-	}*/
 
 	return rt
 }
@@ -577,15 +569,15 @@ func guardar_disp(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Metodo http no valido", http.StatusMethodNotAllowed)
 	} else {
 
-		var datosJson map[string]interface{}
+		var datosJson map[string]json.RawMessage
 		decode := json.NewDecoder(r.Body)
-		//err := 
-		decode.Decode(&datosJson)
+		err := decode.Decode(&datosJson)
 
+		var datos Dispositivo
+		json.Unmarshal(datosJson["Dispositivo"], &datos)
 
-		fmt.Println(datosJson)
-
-		/*
+		fmt.Println("Dispositivo")
+		fmt.Println(datos)
 
 		//Empezamos transaccion
 
@@ -603,37 +595,37 @@ func guardar_disp(w http.ResponseWriter, r *http.Request) {
 
 			if !rows.Next() {
 				query := `
-				INSERT INTO dispositivo (
-				android_id,
-				version_security_patch,
-				version_sdk_int,
-				version_release,
-				version_preview_sdk_int,
-				version_incremental,
-				version_codename,
-				version_base_os,
-				board,
-				bootloader,
-				brand,
-				device,
-				display,
-				fingerprint,
-				hardware,
-				host,
-				id,
-				manufacturer,
-				model,
-				product,
-				type,
-				is_physical_device,
-				serial_number,
-				is_low_ram_device
-				) VALUES (
-				$1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-				$11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-				$21, $22, $23, $24
-				);
-				`
+						INSERT INTO dispositivo (
+						android_id,
+						version_security_patch,
+						version_sdk_int,
+						version_release,
+						version_preview_sdk_int,
+						version_incremental,
+						version_codename,
+						version_base_os,
+						board,
+						bootloader,
+						brand,
+						device,
+						display,
+						fingerprint,
+						hardware,
+						host,
+						id,
+						manufacturer,
+						model,
+						product,
+						type,
+						is_physical_device,
+						serial_number,
+						is_low_ram_device
+						) VALUES (
+						$1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+						$11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+						$21, $22, $23, $24
+						);
+						`
 
 				// Asegúrate de que tienes la estructura "Dispositivo" y los datos decodificados en la variable "datos"
 				_, err = db.Exec(
@@ -670,8 +662,20 @@ func guardar_disp(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 
+				/*var localizacionID int //Tengo que mirar como hago para concadenar la id posición con la mierda del QR. Creo que al final es mejor realizarlo una vez se captura el QR. No se
+						err = db.QueryRow(`
+					INSERT INTO localizacion (latitud, longitud, descripcion)
+					VALUES ($1, $2, $3)
+					ON CONFLICT (latitud, longitud) DO UPDATE SET descripcion = EXCLUDED.descripcion
+					RETURNING id;
+				`, posicion.Latitud, posicion.Longitud, nil).Scan(&localizacionID)
+
+						if err != nil {
+							log.Println("Error al insertar localización:", err)
+							return
+						}*/
 			}
-		}*/
+		}
 	}
 }
 
@@ -684,12 +688,22 @@ func guardar_qr(qr Code_QR, android_id string, localizacion Localizacion) {
 		log.Fatal(err)
 	}
 
-	insert_qr := `INSERT INTO qrs (contenido) VALUES ($1) RETURNING id;`
+	insert_qr := `
+		INSERT INTO qrs (contenido)
+		VALUES ($1)
+		ON CONFLICT (contenido) DO NOTHING
+		RETURNING id;
+		`
 
 	var qrID int
 	err = tx.QueryRow(insert_qr, qr.CODE_QR).Scan(&qrID)
+	if err == sql.ErrNoRows {
+		// No se insertó porque ya existía, así que hacemos un SELECT
+		err = tx.QueryRow("SELECT id FROM qrs WHERE contenido = $1", qr.CODE_QR).Scan(&qrID)
+	}
+
 	if err != nil {
-		fmt.Errorf("Error al insertar el QR: %v", err)
+		fmt.Errorf("Error guardar o seleccionar el QR: %v", err)
 		tx.Rollback()
 	}
 
@@ -701,13 +715,46 @@ func guardar_qr(qr Code_QR, android_id string, localizacion Localizacion) {
 		tx.Rollback()
 	}
 
+	var localizacionID int
+	insert_localizacion := `
+	INSERT INTO localizacion (latitud, longitud, descripcion)
+	VALUES ($1, $2, $3)
+	ON CONFLICT (latitud, longitud) DO UPDATE SET descripcion = EXCLUDED.descripcion
+	RETURNING id;
+`
+
+	err = tx.QueryRow(insert_localizacion, localizacion.Latitud, localizacion.Longitud, nil).Scan(&localizacionID)
+	if err == sql.ErrNoRows {
+		err = tx.QueryRow(
+			"SELECT id FROM localizacion WHERE latitud = $1 AND longitud = $2",
+			localizacion.Latitud, localizacion.Longitud,
+		).Scan(&localizacionID)
+	}
+
+	if err != nil {
+		log.Println("Error al insertar o recuperar localización:", err)
+		tx.Rollback()
+	}
+
+	relacion_qr_localizacion := `
+		INSERT INTO qr_localizacion (qr_id, localizacion_id)
+		VALUES ($1, $2)
+		ON CONFLICT DO NOTHING;
+	`
+	_, err = tx.Exec(relacion_qr_localizacion, qrID, localizacionID)
+
+	if err != nil {
+		log.Println("Error al insertar en qr_localizacion:", err)
+		tx.Rollback()
+	}
+
 	err = tx.Commit()
 	if err != nil {
 		fmt.Errorf("Error al hacer commit de la transacción: %v", err)
 		tx.Rollback()
 	}
 
-	fmt.Println("QR insertado y relacionado con el dispositivo correctamente.")
+	fmt.Println("QR insertado y relacionado con el dispositivo y/o localizacion correctamente.")
 }
 
 //Analisis del QR.
@@ -720,25 +767,34 @@ func analisisQR(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "Metodo http no valido", http.StatusMethodNotAllowed)
 	} else {
-		var datos map[string]string
+		var datos map[string]json.RawMessage
 
 		decode := json.NewDecoder(r.Body)
 		err := decode.Decode(&datos)
 
 		var cd_qr Code_QR
-		cd_qr.CODE_QR = datos["code_qr"]
+		err = json.Unmarshal(datos["code_qr"], &cd_qr.CODE_QR)
 
-		androidID := datos["android_id"]
+		var androidID string
+
+		err = json.Unmarshal(datos["androidId"], &androidID)
+
+		if err != nil {
+			fmt.Println("ERROR EN ANDROID ID")
+		}
+		var posicion Localizacion
+		json.Unmarshal(datos["Localizacion"], &posicion)
 
 		fmt.Println(androidID)
 		fmt.Println(cd_qr.CODE_QR)
+		fmt.Println(posicion)
 
 		if err != nil {
 			http.Error(w, "Error al procesar el JSON", http.StatusBadRequest)
 		} else {
 			fmt.Println(cd_qr.CODE_QR)
 
-			consultaBBDD(cd_qr)
+			//consultaBBDD(cd_qr)
 
 			//Salida con los datos del analisis externo.
 			dicAnalisis := analisisURL(cd_qr.CODE_QR)
@@ -751,7 +807,7 @@ func analisisQR(w http.ResponseWriter, r *http.Request) {
 
 				if resultado {
 					resultStrign = "Peligroso"
-					guardar_qr(cd_qr, androidID, Localizacion{})
+					guardar_qr(cd_qr, androidID, posicion)
 				} else {
 					resultStrign = "No peligroso"
 				}
@@ -764,10 +820,20 @@ func analisisQR(w http.ResponseWriter, r *http.Request) {
 				dicFinal = append(dicFinal, nuevo)
 			}
 
+			var enBBDD string = "No peligroso"
+			if consultaBBDD(cd_qr) {
+				enBBDD = "Peligroso"
+			}
+			
+			analisisPropio := map[string]string{
+				"analizador": "QRCondom",
+				"resultado":  enBBDD,
+			}
+			dicFinal = append(dicFinal, analisisPropio)
+
 			w.WriteHeader(http.StatusCreated)
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(dicFinal)
-
 		}
 	}
 }
@@ -776,30 +842,7 @@ func analisisQR(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error cargando .env")
-	}
-
-	user := os.Getenv("DB_USER")
-	password := os.Getenv("DB_PASSWORD")
-	dbname := os.Getenv("DB_NAME")
-	host := os.Getenv("DB_HOST")
-	port := os.Getenv("DB_PORT")
-
-	db, err = sql.Open("postgres",
-		fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", host, port, user, password, dbname))
-
-	if err != nil {
-		log.Fatal(err)
-		defer db.Close()
-	}
-
-	err = db.Ping()
-	if err != nil {
-		log.Fatal(err)
-	}
-
+	conexionBBDD()
 	crearBBDD()
 
 	http.HandleFunc("/analisis_qr", analisisQR)
