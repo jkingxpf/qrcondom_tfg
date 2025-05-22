@@ -65,10 +65,19 @@ class _Escaneo_QR_State extends State<Escaneo_QR> {
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
       home: Scaffold(
-        appBar: AppBar(title: Text('QR Code Scanner')),
+        backgroundColor: const Color(0xFFE3F2FD), // Azul claro de fondo
+        appBar: AppBar(
+          title: const Text(
+            'QRCondom',
+            style: TextStyle(color: Colors.white),
+          ),
+          backgroundColor: const Color(0xFF1976D2), // Azul medio
+          iconTheme: const IconThemeData(color: Colors.white),
+        ),
         body: Column(
           children: [
             Expanded(
@@ -78,10 +87,12 @@ class _Escaneo_QR_State extends State<Escaneo_QR> {
             Expanded(
               flex: 1,
               child: Center(
-                child:
-                    (result != null)
-                        ? Text('Data: ${result!.code}')
-                        : Text('Scan a code'),
+                child: Text(
+                  (result != null)
+                      ? 'Data: ${result!.code}'
+                      : 'Escanea un código',
+                  style: const TextStyle(fontSize: 18, color: Colors.black87),
+                ),
               ),
             ),
           ],

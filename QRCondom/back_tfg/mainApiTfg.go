@@ -2,6 +2,7 @@ package main
 
 import (
 	//"encoding/json"
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -28,6 +30,7 @@ import (
 
 	_ "github.com/lib/pq"
 	//"os/exec"
+	"io"
 )
 
 //Variables que se van a usar en el server.
@@ -383,15 +386,104 @@ func finConsultaSegura(w http.ResponseWriter, r *http.Request) {
 }
 
 // Apartado de analisis de QR por via externa.
-func analisisURL(url string) map[string]bool {
+func analisisURL(urlObjetivo string) map[string]bool {
 
 	//Diccionario de salidas de los analizadores.
 
 	dicAnalsizadores := make(map[string]bool)
 
-	dicAnalsizadores["virustotal"] = analisisVirusTotal(url)
+	//dicAnalsizadores["virustotal"] = analisisVirusTotal(urlObjetivourl)
+	dicAnalsizadores["urlhaus"] = analisisURLhaus(urlObjetivo)
+	dicAnalsizadores["PhishTank"] = analisisPhishTank(urlObjetivo)
 
 	return dicAnalsizadores
+}
+
+func analisisPhishTank(urlObjetivo string) bool {
+
+	form := url.Values{}
+	fmt.Printf("URL obejtivo = %s \n", urlObjetivo)
+	form.Add("url", urlObjetivo)
+	form.Add("format","json")
+
+	req, _ := http.NewRequest("POST", "https://checkurl.phishtank.com/checkurl/", bytes.NewBufferString(form.Encode()))
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", "phishtank/username")
+
+	fmt.Println("=== Cuerpo de la solicitud ===")
+	fmt.Println(form.Encode())
+
+	// 🔍 Imprimir headers
+	fmt.Println("=== Headers ===")
+	for k, v := range req.Header {
+		fmt.Printf("%s: %s\n", k, v)
+	}
+	cliente := &http.Client{}
+	resp, _ := cliente.Do(req)
+
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Error al leer el cuerpo:", err)
+		return false
+	}
+
+	//fmt.Println("Respuesta cruda:")
+	//fmt.Println(string(bodyBytes))
+
+	// Ahora decodificar
+	var bodyResp map[string]json.RawMessage
+	if err := json.Unmarshal(bodyBytes, &bodyResp); err != nil {
+		fmt.Println("Error al decodificar JSON:", err)
+		return false
+	}
+
+	fmt.Println("Mapa decodificado:")
+	//fmt.Printf("%+v\n", bodyResp)
+
+	// Ejemplo de acceso a un dato
+	var respuesta map[string]bool
+	json.Unmarshal(bodyResp["results"],&respuesta)
+	// inDatabase := results["in_database"].(bool)
+	fmt.Printf("%+v\n", respuesta)
+
+	return respuesta["in_database"]
+}
+
+func analisisURLhaus(urlObjetivo string) bool {
+
+	urlhaus_key := os.Getenv("URLHAUS_KEY")
+
+	/*datos := map[string]string{
+		"url": url,
+	}
+
+	jsonData, _ := json.Marshal(datos)*/
+
+	form := url.Values{}
+	form.Add("url", urlObjetivo)
+
+	req, _ := http.NewRequest("POST", "https://urlhaus-api.abuse.ch/v1/url/", bytes.NewBufferString(form.Encode()))
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Auth-key", urlhaus_key)
+
+	fmt.Println("=== Cuerpo de la solicitud  URLhaus===")
+	fmt.Println(form.Encode())
+
+	cliente := &http.Client{}
+	resp, _ := cliente.Do(req)
+
+	defer resp.Body.Close()
+
+	var bodyResp map[string]string
+	json.NewDecoder(resp.Body).Decode(&bodyResp)
+
+	fmt.Println(bodyResp["query_status"])
+
+	return bodyResp["query_status"] == "ok"
 }
 
 func analisisVirusTotal(url string) bool {
@@ -515,8 +607,8 @@ func crearBBDD() {
 	}
 
 	query = `CREATE TABLE IF NOT EXISTS dispositivo_qr (
-		qr_id INTEGER REFERENCES qrs(id) ON DELETE CASCADE,
-		android_id TEXT REFERENCES dispositivo(android_id) ON DELETE CASCADE,
+		qr_id INTEGER REFERENCES qrs(id) ,
+		android_id TEXT REFERENCES dispositivo(android_id) ,
 		PRIMARY KEY (qr_id, android_id)
 	);`
 
@@ -527,8 +619,8 @@ func crearBBDD() {
 	}
 
 	query = `CREATE TABLE IF NOT EXISTS qr_localizacion (
-		qr_id INTEGER REFERENCES qrs(id) ON DELETE CASCADE,
-		localizacion_id INTEGER REFERENCES localizacion(id) ON DELETE CASCADE,
+		qr_id INTEGER REFERENCES qrs(id) ,
+		localizacion_id INTEGER REFERENCES localizacion(id) ,
 		PRIMARY KEY (qr_id, localizacion_id)
 	);`
 
@@ -662,18 +754,6 @@ func guardar_disp(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 
-				/*var localizacionID int //Tengo que mirar como hago para concadenar la id posición con la mierda del QR. Creo que al final es mejor realizarlo una vez se captura el QR. No se
-						err = db.QueryRow(`
-					INSERT INTO localizacion (latitud, longitud, descripcion)
-					VALUES ($1, $2, $3)
-					ON CONFLICT (latitud, longitud) DO UPDATE SET descripcion = EXCLUDED.descripcion
-					RETURNING id;
-				`, posicion.Latitud, posicion.Longitud, nil).Scan(&localizacionID)
-
-						if err != nil {
-							log.Println("Error al insertar localización:", err)
-							return
-						}*/
 			}
 		}
 	}
@@ -824,7 +904,7 @@ func analisisQR(w http.ResponseWriter, r *http.Request) {
 			if consultaBBDD(cd_qr) {
 				enBBDD = "Peligroso"
 			}
-			
+
 			analisisPropio := map[string]string{
 				"analizador": "QRCondom",
 				"resultado":  enBBDD,

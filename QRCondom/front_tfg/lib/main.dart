@@ -57,10 +57,16 @@ Future<String> infoDispJson() async {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(title: 'Front_TFG', home: MyHomePage('QRCondom'));
+    return MaterialApp(
+      title: 'Front_TFG',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.lightBlue),
+        useMaterial3: true,
+      ),
+      home: MyHomePage('QRCondom'),
+    );
   }
 }
 
@@ -78,19 +84,25 @@ class MyHomePage extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          title,
-          style: TextStyle(color: const Color.fromARGB(172, 247, 252, 245)),
-        ),
-        backgroundColor: const Color.fromARGB(255, 0, 77, 64), // Verde oscuro
+        title: Text(title, style: const TextStyle(color: Colors.white)),
+        backgroundColor: const Color(0xFF1565C0),
+        centerTitle: true,
       ),
       body: Container(
-        color: Colors.black, // Fondo negro para sensación de solidez
+        color: const Color(0xFFE3F2FD),
         width: anchoScreen,
         height: largoScreen,
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.start,
-          children: [TextoContainer(texto), BotonBajoCentro("Analizador")],
+          children: [
+            TextoContainer(texto),
+            const Spacer(),
+            const Spacer(),
+            const Spacer(),
+            const Spacer(),
+
+            BotonBajoCentro("Analizador"),
+            const Spacer(),
+          ],
         ),
       ),
     );
@@ -99,22 +111,24 @@ class MyHomePage extends StatelessWidget {
 
 class TextoContainer extends StatelessWidget {
   final String texto;
-
   TextoContainer(this.texto);
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.black,
-      padding: EdgeInsets.all(16),
-      child: Text(texto, style: TextStyle(fontSize: 18, color: Colors.white)),
+      color: const Color(0xFFE3F2FD),
+      padding: const EdgeInsets.all(20),
+      child: Text(
+        texto,
+        style: const TextStyle(fontSize: 16, color: Color(0xFF0D47A1)),
+        textAlign: TextAlign.justify,
+      ),
     );
   }
 }
 
 class BotonBajoCentro extends StatelessWidget {
   final String nombreBoton;
-
   BotonBajoCentro(this.nombreBoton);
 
   @override
@@ -122,11 +136,7 @@ class BotonBajoCentro extends StatelessWidget {
     void enviarDatos() async {
       var url = Uri.parse('http://192.168.1.46:80/guardar_disp');
       try {
-        print("Puta estamos en el try envio datos");
-
         final bodyJson = await infoDispJson();
-
-        //        print(bodyJson);
 
         var response = await http.post(
           url,
@@ -140,17 +150,28 @@ class BotonBajoCentro extends StatelessWidget {
             MaterialPageRoute(builder: (context) => Escaneo_QR()),
           );
         }
-
-        //print(response.body);
       } catch (e) {
-        print('Request failed: $e'); // Si hay un error en la red, lo mostramos
+        print('Request failed: $e');
       }
     }
 
     return Padding(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.symmetric(vertical: 24.0),
       child: Center(
-        child: ElevatedButton(onPressed: enviarDatos, child: Text(nombreBoton)),
+        child: ElevatedButton(
+          onPressed: enviarDatos,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF1976D2),
+            padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: Text(
+            nombreBoton,
+            style: const TextStyle(fontSize: 16, color: Colors.white),
+          ),
+        ),
       ),
     );
   }
