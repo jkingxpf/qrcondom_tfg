@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:android_id/android_id.dart';
 import 'package:front_tfg/pantalla_QR.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 
 void main() {
@@ -151,7 +150,7 @@ class BotonBajoCentro extends StatelessWidget {
           );
         }
       } catch (e) {
-        print('Request failed: $e');
+        print('Error try: $e');
       }
     }
 
@@ -159,6 +158,7 @@ class BotonBajoCentro extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 24.0),
       child: Center(
         child: ElevatedButton(
+          key: Key("boton_consentimiento"),
           onPressed: enviarDatos,
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF1976D2),

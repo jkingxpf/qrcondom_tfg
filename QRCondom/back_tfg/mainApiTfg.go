@@ -1,48 +1,29 @@
 package main
 
 import (
-	//"encoding/json"
 	"bytes"
 	"database/sql"
 	"encoding/json"
-	"strconv"
-	"sync"
-
-	//"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
-
-	//"time"
-
-	//	"os/signal"
 	"sync/atomic"
-	//se usa despues
 
-	//"syscall"
-	"github.com/williballenthin/govt"
-	//se usa despues
 	"github.com/joho/godotenv"
-
 	_ "github.com/lib/pq"
-	//"os/exec"
-	"io"
+	"github.com/williballenthin/govt"
 )
 
 //Variables que se van a usar en el server.
 
 type Code_QR struct {
 	CODE_QR string `json:"code_qr"`
-}
-
-type analizadoresURL struct {
-	VIRUSTOTAL           bool
-	GOOGLE_SAFE_BROWSING bool
-	IP_QUALITY_SCORE     bool
 }
 
 type Dispositivo struct {
@@ -98,9 +79,7 @@ var androidDicc map[string]DatosAsociadosAndroid = make(map[string]DatosAsociado
 var bloqueMontaje uint64 = 0
 var cloneID uint64 = 0
 var puerto uint32 = 0
-var mutex sync.Mutex
 
-// Clonado de la bbdd
 func getNewIdClone() uint64 {
 	return atomic.AddUint64(&cloneID, 1)
 }
@@ -140,10 +119,9 @@ func crearClone(android_id string) (string, error) {
 	return imagenClone, e
 }
 
-// Start la maquina virtual
 func startVM(cloneImage, vncPort string) (*exec.Cmd, error) {
 
-	fmt.Println("Imagen clone: %s,  puerto : %s", cloneImage, vncPort)
+	fmt.Printf("Imagen clone: %s,  puerto : %s \n", cloneImage, vncPort)
 
 	cmd := exec.Command("qemu-system-x86_64",
 		"-enable-kvm",
@@ -159,7 +137,6 @@ func startVM(cloneImage, vncPort string) (*exec.Cmd, error) {
 
 	err := cmd.Start()
 
-	fmt.Println("Emos pasado el cmd.Start")
 	rt := cmd
 	var e error = nil
 	if err != nil {
@@ -170,13 +147,13 @@ func startVM(cloneImage, vncPort string) (*exec.Cmd, error) {
 	return rt, e
 }
 
-func compartirQr(qr string, cloneImage string) {
+func compartirQr(qr string, cloneImage string) bool {
+
+	var fallo bool = false
 
 	bloque := newBloqueMontaje()
 	pathBloqueMontado := "/dev/nbd" + strconv.FormatUint(bloque, 10)
 	pathCloneImage := path + "/" + cloneImage
-
-	fmt.Printf("Me lo pides tu qemu? \n")
 
 	fmt.Printf("path bloque mnbd: %s \n path imagen clone: %s \n", pathBloqueMontado, pathCloneImage)
 
@@ -189,6 +166,7 @@ func compartirQr(qr string, cloneImage string) {
 
 	if err != nil {
 		fmt.Errorf("Error al intentar conectar la imagen a /dev/nbd%d : %v", bloque, err)
+		fallo = true
 	}
 
 	fmt.Printf("Clone name en compartir = %s \n", cloneImage)
@@ -202,7 +180,8 @@ func compartirQr(qr string, cloneImage string) {
 	err = cmdMkdir.Run()
 
 	if err != nil {
-		fmt.Errorf("Error al crear directorio con sudo mkdir %s : %v", newDir, err)
+		fmt.Printf("Error al crear directorio con sudo mkdir %s : %v", newDir, err)
+		fallo = true
 	}
 
 	fmt.Printf("path montado: %s \n path donde se monta: %s \n", pathBloqueMontado+"p1", newDir)
@@ -214,27 +193,17 @@ func compartirQr(qr string, cloneImage string) {
 	err = cmdMount.Run()
 
 	if err != nil {
-		fmt.Errorf("Error al montar el disco virtual: %v", err)
+		fmt.Printf("Error al montar el disco virtual: %v", err)
+		fallo = true
 	}
-
-	fmt.Printf("%s \n", newDir)
-	fmt.Printf("echo '%s' > %s/android-9.0-r2/data/qr_code.txt\n", qr, newDir)
 
 	qrPath := fmt.Sprintf("%s/android-9.0-r2/data/qr_code.txt", newDir)
 	err = os.WriteFile(qrPath, []byte(qr), 0644)
 
-	/*cmdCompartir := exec.Command(
-		fmt.Sprintf("echo '%s' > %s/android-9.0-r2/data/qr_code.txt", qr, newDir),
-	)
-
-	err = cmdCompartir.Run()*/
 	if err != nil {
-		fmt.Errorf("Error al compartir el qr en %s: %v", qrPath, err)
+		fmt.Printf("Error al compartir el qr en %s: %v", qrPath, err)
+		fallo = true
 	}
-
-	//mnt/android_disk/android-9.0-r2/data/
-
-	fmt.Printf("umount %s \n", newDir)
 
 	cmdDesmontar := exec.Command("sudo",
 		"umount", newDir,
@@ -243,7 +212,8 @@ func compartirQr(qr string, cloneImage string) {
 	err = cmdDesmontar.Run()
 
 	if err != nil {
-		fmt.Errorf("Error al compartir el qr en %s/dev/qr_code.txt: %v", newDir, err)
+		fmt.Printf("Error al compartir el qr en %s/dev/qr_code.txt: %v", newDir, err)
+		fallo = true
 	}
 
 	fmt.Printf("qemu-nbd %s \n", pathBloqueMontado)
@@ -256,27 +226,35 @@ func compartirQr(qr string, cloneImage string) {
 	err = cmdDesconectar.Run()
 
 	if err != nil {
-		fmt.Errorf("Error al desconectar el bloque %s: %v", pathBloqueMontado, err)
+		fmt.Printf("Error al desconectar el bloque %s: %v", pathBloqueMontado, err)
+		fallo = true
 	}
+
+	cmdrm := exec.Command("sudo",
+		"rm", "-r", newDir,
+	)
+
+	err = cmdrm.Run()
+
+	if err != nil {
+		fmt.Printf("Error al eliminar con rm %s : %v", newDir, err)
+		fallo = true
+	}
+
+	return fallo
 
 }
 
-// Elimina la maquina clone
 func deleteClone(cloneImage string) error {
 	clonepath := path + "/" + cloneImage
 	return os.Remove(clonepath)
 }
 
-// consulta segura. Proceso de creación y puesta a punto de la maquina virtual.
 func consultaSegura(w http.ResponseWriter, r *http.Request) {
-
-	fmt.Println("Putamadre llego PREPOST")
 
 	if r.Method != "POST" {
 		http.Error(w, "Metodo http no valido", http.StatusMethodNotAllowed)
 	}
-
-	fmt.Println("Putamadre llego postPost")
 
 	var qrcode Code_QR
 
@@ -284,19 +262,13 @@ func consultaSegura(w http.ResponseWriter, r *http.Request) {
 	decode := json.NewDecoder(r.Body)
 	err := decode.Decode(&dic)
 
-	fmt.Println("Ca esta pasando")
-
 	qrcode.CODE_QR = dic["qr_code"]
 	var datosAsos DatosAsociadosAndroid
-
-	fmt.Println("Pre lock")
 
 	datosAsos.cloneID = getNewIdClone()
 	datosAsos.puerto = getNewPuerto()
 
 	androidDicc[dic["android_id"]] = datosAsos
-
-	fmt.Println("Pre lock")
 
 	if err != nil {
 		http.Error(w, "Error al procesar el JSON", http.StatusBadRequest)
@@ -307,16 +279,15 @@ func consultaSegura(w http.ResponseWriter, r *http.Request) {
 	path = os.Getenv("CLONE_PATH")
 
 	cloneName, err := crearClone(dic["android_id"])
-	fmt.Printf("Nombre de clone puta madre: %s \n", cloneName)
 
 	if err != nil {
-		fmt.Errorf("Error en clonado main: %v", err)
+		http.Error(w, "Error al clonar", http.StatusBadRequest)
 	}
 
-	// antes de empezar a mostrar tengo que hacer "sudo modprobe nbd" para habilitar los bloques.
-	compartirQr(qrcode.CODE_QR, cloneName)
+	if compartirQr(qrcode.CODE_QR, cloneName) {
+		http.Error(w, "Error al compartir", http.StatusBadRequest)
+	}
 
-	/*vmCmd*/
 	port := fmt.Sprintf(":%d",
 		androidDicc[dic["android_id"]].puerto)
 
@@ -325,27 +296,13 @@ func consultaSegura(w http.ResponseWriter, r *http.Request) {
 	androidDicc[dic["android_id"]] = datosAsos
 
 	if err != nil {
-		fmt.Errorf("Error al iniciar VM main: %v", err)
+		fmt.Println(err)
+		http.Error(w, "Error al iniciar la VM", http.StatusBadRequest)
 	}
-	fmt.Println(androidDicc[dic["android_id"]])
 
 	w.WriteHeader(http.StatusCreated)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(androidDicc[dic["android_id"]].puerto)
-	/*fmt.Println("VM running. Press ENTER to stop...")
-	fmt.Scanln()
-
-	if err := vmCmd.Process.Kill(); err != nil {
-		fmt.Println("Error stopping VM:", err)
-	}
-
-	time.Sleep(2 * time.Second)
-	if err := deleteClone(cloneName); err != nil {
-		fmt.Println("Error deleting clone:", err)
-	} else {
-		fmt.Println("Clone deleted.")
-	}*/
-
 }
 
 func finConsultaSegura(w http.ResponseWriter, r *http.Request) {
@@ -361,21 +318,22 @@ func finConsultaSegura(w http.ResponseWriter, r *http.Request) {
 	infoAsoc := androidDicc[respuesta["android_id"]]
 
 	if infoAsoc.vmCmd == nil {
-		log.Fatal("Que coño por que es null?")
+		http.Error(w, "Error ¿poque null?", http.StatusBadRequest)
 	}
 
-	if err := infoAsoc.vmCmd.Process.Kill(); err != nil {
-		fmt.Println("Error stopping VM:", err)
-	}
+	err = infoAsoc.vmCmd.Process.Kill()
 
-	fmt.Println("PostEliminacion")
+	if err != nil {
+		http.Error(w, "Error parando VM:", http.StatusBadRequest)
+	}
 
 	imagenClone := fmt.Sprintf(prefijo+"%d.qcow2", infoAsoc.cloneID)
 
-	if err := deleteClone(imagenClone); err != nil {
+	err = deleteClone(imagenClone)
+	if err != nil {
+		http.Error(w, "Error deleting clone:", http.StatusBadRequest)
 		fmt.Println("Error deleting clone:", err)
 	} else {
-
 		fmt.Println("Clone deleted.")
 	}
 
@@ -385,14 +343,11 @@ func finConsultaSegura(w http.ResponseWriter, r *http.Request) {
 
 }
 
-// Apartado de analisis de QR por via externa.
 func analisisURL(urlObjetivo string) map[string]bool {
-
-	//Diccionario de salidas de los analizadores.
 
 	dicAnalsizadores := make(map[string]bool)
 
-	//dicAnalsizadores["virustotal"] = analisisVirusTotal(urlObjetivourl)
+	dicAnalsizadores["virustotal"] = analisisVirusTotal(urlObjetivo)
 	dicAnalsizadores["urlhaus"] = analisisURLhaus(urlObjetivo)
 	dicAnalsizadores["PhishTank"] = analisisPhishTank(urlObjetivo)
 
@@ -404,21 +359,13 @@ func analisisPhishTank(urlObjetivo string) bool {
 	form := url.Values{}
 	fmt.Printf("URL obejtivo = %s \n", urlObjetivo)
 	form.Add("url", urlObjetivo)
-	form.Add("format","json")
+	form.Add("format", "json")
 
 	req, _ := http.NewRequest("POST", "https://checkurl.phishtank.com/checkurl/", bytes.NewBufferString(form.Encode()))
 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("User-Agent", "phishtank/username")
 
-	fmt.Println("=== Cuerpo de la solicitud ===")
-	fmt.Println(form.Encode())
-
-	// 🔍 Imprimir headers
-	fmt.Println("=== Headers ===")
-	for k, v := range req.Header {
-		fmt.Printf("%s: %s\n", k, v)
-	}
 	cliente := &http.Client{}
 	resp, _ := cliente.Do(req)
 
@@ -430,23 +377,14 @@ func analisisPhishTank(urlObjetivo string) bool {
 		return false
 	}
 
-	//fmt.Println("Respuesta cruda:")
-	//fmt.Println(string(bodyBytes))
-
-	// Ahora decodificar
 	var bodyResp map[string]json.RawMessage
 	if err := json.Unmarshal(bodyBytes, &bodyResp); err != nil {
 		fmt.Println("Error al decodificar JSON:", err)
 		return false
 	}
 
-	fmt.Println("Mapa decodificado:")
-	//fmt.Printf("%+v\n", bodyResp)
-
-	// Ejemplo de acceso a un dato
 	var respuesta map[string]bool
-	json.Unmarshal(bodyResp["results"],&respuesta)
-	// inDatabase := results["in_database"].(bool)
+	json.Unmarshal(bodyResp["results"], &respuesta)
 	fmt.Printf("%+v\n", respuesta)
 
 	return respuesta["in_database"]
@@ -456,12 +394,6 @@ func analisisURLhaus(urlObjetivo string) bool {
 
 	urlhaus_key := os.Getenv("URLHAUS_KEY")
 
-	/*datos := map[string]string{
-		"url": url,
-	}
-
-	jsonData, _ := json.Marshal(datos)*/
-
 	form := url.Values{}
 	form.Add("url", urlObjetivo)
 
@@ -470,9 +402,6 @@ func analisisURLhaus(urlObjetivo string) bool {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Auth-key", urlhaus_key)
 
-	fmt.Println("=== Cuerpo de la solicitud  URLhaus===")
-	fmt.Println(form.Encode())
-
 	cliente := &http.Client{}
 	resp, _ := cliente.Do(req)
 
@@ -480,8 +409,6 @@ func analisisURLhaus(urlObjetivo string) bool {
 
 	var bodyResp map[string]string
 	json.NewDecoder(resp.Body).Decode(&bodyResp)
-
-	fmt.Println(bodyResp["query_status"])
 
 	return bodyResp["query_status"] == "ok"
 }
@@ -502,18 +429,12 @@ func analisisVirusTotal(url string) bool {
 		log.Println("Error al hacer el report VT: ", err)
 	}
 
-	//j, err := json.MarshalIndent(r, "", "    ")
-
 	if err != nil {
 		log.Println("Error al hacer el json? VT: ", err)
 	}
 
-	fmt.Println("UslREport: ", r.Positives)
-
 	return r.Positives > 0
 }
-
-// Parte de consulta a base de datos propia.
 
 func conexionBBDD() {
 
@@ -630,16 +551,6 @@ func crearBBDD() {
 		log.Fatal("Error al crear la tabla qr_localizacion:", err)
 	}
 
-	/*query = `CREATE TABLE IF NOT EXISTS ip_disp (
-		id
-	);`
-
-	_, err = db.Exec(query)
-
-	if err != nil {
-		log.Fatal("Error al crear la tabla:", err)
-	}*/
-
 	fmt.Println("Tabla creada exitosamente")
 }
 
@@ -668,24 +579,19 @@ func guardar_disp(w http.ResponseWriter, r *http.Request) {
 		var datos Dispositivo
 		json.Unmarshal(datosJson["Dispositivo"], &datos)
 
-		fmt.Println("Dispositivo")
-		fmt.Println(datos)
-
-		//Empezamos transaccion
-
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Error al procesar el JSON: %s", err), http.StatusBadRequest)
-			log.Fatal(err)
 
 		} else {
 
 			rows, err := db.Query("SELECT android_id FROM dispositivo")
 			if err != nil {
-				log.Fatalf("Error al hacer el SELECT: %v", err)
+				http.Error(w, fmt.Sprintf("Error al hacer el SELECT: %s", err), http.StatusBadRequest)
 			}
 			defer rows.Close()
 
 			if !rows.Next() {
+				fmt.Println("Entro en insertar")
 				query := `
 						INSERT INTO dispositivo (
 						android_id,
@@ -719,7 +625,6 @@ func guardar_disp(w http.ResponseWriter, r *http.Request) {
 						);
 						`
 
-				// Asegúrate de que tienes la estructura "Dispositivo" y los datos decodificados en la variable "datos"
 				_, err = db.Exec(
 					query,
 					datos.AndroidID,
@@ -749,11 +654,8 @@ func guardar_disp(w http.ResponseWriter, r *http.Request) {
 				)
 
 				if err != nil {
-					fmt.Errorf("Error al insertar datos del dispositivo: %v", err)
-					// Aquí puedes hacer rollback si estás en una transacción
-					return
+					http.Error(w, fmt.Sprintf("Error al hacer el INSERT del dispositivo: %s", err), http.StatusBadRequest)
 				}
-
 			}
 		}
 	}
@@ -765,7 +667,6 @@ func guardar_qr(qr Code_QR, android_id string, localizacion Localizacion) {
 
 	if err != nil {
 		fmt.Errorf("Error al insertar el QR: %v", err)
-		log.Fatal(err)
 	}
 
 	insert_qr := `
@@ -778,7 +679,6 @@ func guardar_qr(qr Code_QR, android_id string, localizacion Localizacion) {
 	var qrID int
 	err = tx.QueryRow(insert_qr, qr.CODE_QR).Scan(&qrID)
 	if err == sql.ErrNoRows {
-		// No se insertó porque ya existía, así que hacemos un SELECT
 		err = tx.QueryRow("SELECT id FROM qrs WHERE contenido = $1", qr.CODE_QR).Scan(&qrID)
 	}
 
@@ -833,12 +733,7 @@ func guardar_qr(qr Code_QR, android_id string, localizacion Localizacion) {
 		fmt.Errorf("Error al hacer commit de la transacción: %v", err)
 		tx.Rollback()
 	}
-
-	fmt.Println("QR insertado y relacionado con el dispositivo y/o localizacion correctamente.")
 }
-
-//Analisis del QR.
-//Engloba todo el proceso.
 
 func analisisQR(w http.ResponseWriter, r *http.Request) {
 
@@ -852,64 +747,66 @@ func analisisQR(w http.ResponseWriter, r *http.Request) {
 		decode := json.NewDecoder(r.Body)
 		err := decode.Decode(&datos)
 
+		if err != nil {
+			http.Error(w, "Error al procesar el JSON de datos", http.StatusBadRequest)
+		}
+
 		var cd_qr Code_QR
 		err = json.Unmarshal(datos["code_qr"], &cd_qr.CODE_QR)
+
+		if err != nil {
+			http.Error(w, "Error al procesar el JSON de QR", http.StatusBadRequest)
+		}
 
 		var androidID string
 
 		err = json.Unmarshal(datos["androidId"], &androidID)
 
+		fmt.Println(androidID)
+
 		if err != nil {
-			fmt.Println("ERROR EN ANDROID ID")
+			http.Error(w, "Error al procesar el JSON de AndroidId", http.StatusBadRequest)
 		}
+
 		var posicion Localizacion
 		json.Unmarshal(datos["Localizacion"], &posicion)
 
-		fmt.Println(androidID)
-		fmt.Println(cd_qr.CODE_QR)
-		fmt.Println(posicion)
-
 		if err != nil {
-			http.Error(w, "Error al procesar el JSON", http.StatusBadRequest)
+			http.Error(w, "Error al procesar el JSON Localizacion", http.StatusBadRequest)
 		} else {
-			fmt.Println(cd_qr.CODE_QR)
-
-			//consultaBBDD(cd_qr)
-
-			//Salida con los datos del analisis externo.
-			dicAnalisis := analisisURL(cd_qr.CODE_QR)
-
 			dicFinal := []map[string]string{}
 
-			for analizador, resultado := range dicAnalisis {
+			if !consultaBBDD(cd_qr) {
+				dicAnalisis := analisisURL(cd_qr.CODE_QR)
 
-				var resultStrign string = "no se sabe"
+				for analizador, resultado := range dicAnalisis {
 
-				if resultado {
-					resultStrign = "Peligroso"
-					guardar_qr(cd_qr, androidID, posicion)
-				} else {
-					resultStrign = "No peligroso"
+					var resultStrign string = "no se sabe"
+
+					if resultado {
+						resultStrign = "Peligroso"
+						guardar_qr(cd_qr, androidID, posicion)
+					} else {
+						resultStrign = "No peligroso"
+					}
+
+					nuevo := map[string]string{
+						"analizador": analizador,
+						"resultado":  resultStrign,
+					}
+
+					dicFinal = append(dicFinal, nuevo)
 				}
+			} else {
+				var enBBDD string = "Peligroso"
 
-				nuevo := map[string]string{
-					"analizador": analizador,
-					"resultado":  resultStrign,
+				analisisPropio := map[string]string{
+					"analizador": "QRCondom",
+					"resultado":  enBBDD,
 				}
+				dicFinal = append(dicFinal, analisisPropio)
 
-				dicFinal = append(dicFinal, nuevo)
 			}
-
-			var enBBDD string = "No peligroso"
-			if consultaBBDD(cd_qr) {
-				enBBDD = "Peligroso"
-			}
-
-			analisisPropio := map[string]string{
-				"analizador": "QRCondom",
-				"resultado":  enBBDD,
-			}
-			dicFinal = append(dicFinal, analisisPropio)
 
 			w.WriteHeader(http.StatusCreated)
 			w.Header().Set("Content-Type", "application/json")
@@ -917,8 +814,6 @@ func analisisQR(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
-
-//Main del server
 
 func main() {
 

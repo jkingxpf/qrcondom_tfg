@@ -15,7 +15,6 @@ class PantallaRfb extends StatefulWidget {
 }
 
 class _PantallaRfb extends State<PantallaRfb> {
-  Key keyIteractiveViewer = const ValueKey('init_iteractive');
   int segundos = 20;
   bool cargado = false;
 
@@ -61,7 +60,7 @@ class _PantallaRfb extends State<PantallaRfb> {
         print('Error wacho: ${response.statusCode}');
       }
     } catch (e) {
-      print('Request failed: $e');
+      print('Error try: $e');
     }
   }
 
@@ -96,10 +95,6 @@ class _PantallaRfb extends State<PantallaRfb> {
                       cargado
                           ? UsuarioVNC(widget.port, '192.168.1.46')
                           : TextoCargando(segundos),
-                  /*Text(
-                            "Cargando... espera $segundos segundos",
-                            style: const TextStyle(fontSize: 20),
-                          ),*/
                 ),
               ],
             ),

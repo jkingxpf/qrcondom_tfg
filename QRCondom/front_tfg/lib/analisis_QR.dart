@@ -42,7 +42,6 @@ class _AnalisisQrState extends State<AnalisisQr> {
   }
 
   void consultaSegura() async {
-    print("Entrando babyyyyy");
     var url = Uri.parse('http://192.168.1.46:80/consulta_segura');
 
     final androidIdPlugin = AndroidId();
@@ -69,7 +68,7 @@ class _AnalisisQrState extends State<AnalisisQr> {
           );
         });
       } else {
-        print('Error wacho: ${response.statusCode}');
+        print('Error wacho: ${response.body}');
       }
     } catch (e) {
       print('Request failed: $e');
@@ -79,13 +78,13 @@ class _AnalisisQrState extends State<AnalisisQr> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFE3F2FD), // Fondo azul claro
+      backgroundColor: const Color(0xFFE3F2FD), 
       appBar: AppBar(
         title: const Text(
           "Resultado de Análisis",
           style: TextStyle(color: Colors.white),
         ),
-        backgroundColor: const Color(0xFF1976D2), // Azul medio
+        backgroundColor: const Color(0xFF1976D2), 
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body:

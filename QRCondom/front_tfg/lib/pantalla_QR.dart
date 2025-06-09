@@ -26,7 +26,6 @@ Future<Position?> sacarPosicion() async {
   if (servicioHabilitado) {
     permiso = await Geolocator.checkPermission();
     if (permiso == LocationPermission.denied) {
-      print("pedimos permisos");
       permiso = await Geolocator.requestPermission();
       if (permiso == LocationPermission.denied) {
       } else {
@@ -69,13 +68,14 @@ class _Escaneo_QR_State extends State<Escaneo_QR> {
   Widget build(BuildContext context) {
     return MaterialApp(
       home: Scaffold(
-        backgroundColor: const Color(0xFFE3F2FD), // Azul claro de fondo
+        key: Key("lector_QR"),
+        backgroundColor: const Color(0xFFE3F2FD), 
         appBar: AppBar(
           title: const Text(
             'QRCondom',
             style: TextStyle(color: Colors.white),
           ),
-          backgroundColor: const Color(0xFF1976D2), // Azul medio
+          backgroundColor: const Color(0xFF1976D2), 
           iconTheme: const IconThemeData(color: Colors.white),
         ),
         body: Column(
@@ -143,15 +143,11 @@ class _Escaneo_QR_State extends State<Escaneo_QR> {
           controller.resumeCamera();
         }
 
-        //var data = json.decode(response.body);
-
-        //print(response.body);
       } catch (e) {
         controller.resumeCamera();
-        print('Request failed: $e'); // Si hay un error en la red, lo mostramos
+        print('Error try: $e'); 
       }
     });
 
-    //completar
   }
 }
